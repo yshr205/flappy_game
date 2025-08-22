@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Vampire Flappy</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            /* dark blood-red gradient for background */
+            background: radial-gradient(circle at center, #600202, #240404);
+            color: #fff;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        
+        /* the main game area takes the full visible height */
+        #stage {
+            position: relative;
+            width: 100%;
+            height: calc(var(--vh) * 100);
+            touch-action: manipulation;
+        }
+        
+        /* the canvas fills the stage and has no separate pointer handling */
+        #gameCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: pointer;
+        }
+        
+        /* HUD styling */
+        .hud {
+            position: absolute;
+            top: env(safe-area-inset-top, 0);
+            left: 0;
+            right: 0;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 8px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        /* scoreboard and HUD buttons */
+        .hud-item {
+            background: linear-gradient(135deg, #8b0000, #4a0000);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-weight: bold;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        
+        .hud-button {
+            pointer-events: auto;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .hud-button:hover {
+            background: linear-gradient(135deg, #a00000, #600000);
+            transform: translateY(-1px);
+        }
+        
+        .hud-button:active {
+            transform: translateY(0);
+        }
+        
+        /* Hint line at bottom */
+        .hint {
+            position: absolute;
+            bottom: calc(env(safe-area-inset-bottom, 0) + 20px);
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 14px;
+            color: #ffaaaa;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        /* semi-transparent overlay containers */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+        .overlay.hidden { display: none; }
+        
+        /* content cards inside overlays */
+        .card {
+            background: linear-gradient(135deg, #2a0000, #1a0000);
+            border: 3px solid #ff4444;
+            border-radius: 16px;
+            padding: 24px;
+            width: min(92vw, 420px);
+            max-width: 100%;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+        }
+        .card h2 {
+            margin: 0 0 16px 0;
+            color: #ff6666;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        .card input {
+            width: 100%;
+            max-width: 100%;
+            padding: 12px;
+            margin: 16px 0;
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            background: #1a0000;
+            color: #fff;
+            font-size: 16px;
+            text-align: center;
+        }
+        .card input::placeholder { color: #888; }
+        .card-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .card-button {
+            background: linear-gradient(135deg, #8b0000, #4a0000);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 12px 24px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+        .card-button:hover {
+            background: linear-gradient(135deg, #a00000, #600000);
+            transform: translateY(-1px);
+        }
+        
+        /* floating cute messages for milestones */
+        .cute-message {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0) + 80px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #8b0000, #4a0000);
+            border: 2px solid #ff4444;
+            border-radius: 12px;
+            padding: 8px 16px;
+            font-weight: bold;
+            font-size: 16px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+            pointer-events: none;
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .cute-message.show { opacity: 1; }
+        
+        /* Responsive tweaks */
+        @media (max-width: 480px) {
+            .hud { padding: 8px 12px; }
+            .hud-item { font-size: 12px; padding: 4px 8px; }
+            .hud-button { min-width: 50px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="stage">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Scoreboard & buttons -->
+        <div class="hud">
+            <div class="hud-left">
+                <div class="hud-item" id="scoreDisplay">Score: 0</div>
+                <div class="hud-item" id="bestDisplay">Best: 0</div>
+                <div class="hud-item" id="playerDisplay">Player</div>
+            </div>
+            <div class="hud-right">
+                <div class="hud-button" id="changeNameBtn">Name</div>
+                <div class="hud-button" id="pauseBtn">Pause</div>
+                <div class="hud-button" id="restartBtn">Restart</div>
+            </div>
+        </div>
+        
+        <!-- hint text -->
+        <div class="hint" id="hintText">Tap anywhere to flap, my love...</div>
+        
+        <!-- milestone messages -->
+        <div class="cute-message" id="cuteMessage"></div>
+        
+        <!-- name dialog -->
+        <div class="overlay" id="nameDialog">
+            <div class="card">
+                <h2>🧛‍♀️ Welcome, my love! ❤️</h2>
+                <input type="text" id="nameInput" placeholder="Your name" maxlength="20">
+                <div class="card-buttons">
+                    <button class="card-button" id="playBtn">Play</button>
+                    <button class="card-button" id="cancelBtn">Cancel</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- start overlay -->
+        <div class="overlay hidden" id="startOverlay">
+            <div class="card">
+                <h2>🦇 Our Eternal Flight</h2>
+                <p>Tap to begin our bloody journey, my love!</p>
+            </div>
+        </div>
+        
+        <!-- game over overlay -->
+        <div class="overlay hidden" id="gameOverOverlay">
+            <div class="card">
+                <h2>💔 The Night Ends, my love</h2>
+                <p id="finalScore">Score: 0</p>
+                <p>Tap to fly again by my side...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            'use strict';
+            
+            /* ==== Dynamic viewport height for iOS/Android ==== */
+            function setVH() {
+                const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                document.documentElement.style.setProperty('--vh', `${vh / 100}px`);
+            }
+            
+            /* Canvas references */
+            const canvas = document.getElementById('gameCanvas');
+            const ctx    = canvas.getContext('2d');
+            const stage  = document.getElementById('stage');
+            
+            /* Resize canvas to fit the stage */
+            function resizeCanvas() {
+                const rect = canvas.getBoundingClientRect();
+                const dpr  = 1; // Use DPR=1 for mobile performance
+                canvas.width  = rect.width  * dpr;
+                canvas.height = rect.height * dpr;
+                ctx.setTransform(1, 0, 0, 1, 0, 0); // reset
+                ctx.scale(dpr, dpr);
+                ctx.imageSmoothingEnabled = false;
+            }
+            
+            /* Initialize viewport and canvas on load */
+            function initViewport() {
+                setVH();
+                resizeCanvas();             // ensure correct size immediately
+                setTimeout(resizeCanvas, 50); // adjust after layout settle
+            }
+            
+            /* Viewport listeners for dynamic height on iOS */
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => {
+                    setVH();
+                    setTimeout(resizeCanvas, 50);
+                });
+                window.visualViewport.addEventListener('scroll', () => {
+                    setVH();
+                });
+            }
+            window.addEventListener('resize', () => {
+                setVH();
+                setTimeout(resizeCanvas, 50);
+            });
+            window.addEventListener('orientationchange', () => {
+                setTimeout(() => {
+                    setVH();
+                    setTimeout(resizeCanvas, 100);
+                }, 100);
+            });
+            
+            /* Start the viewport on load */
+            initViewport();
+            
+            /* Game states */
+            const GAME_STATES = {
+                START: 'start',
+                PLAYING: 'playing',
+                PAUSED: 'paused',
+                GAME_OVER: 'game_over',
+                NAME_DIALOG: 'name_dialog'
+            };
+            let gameState = GAME_STATES.NAME_DIALOG;
+            let lastTime  = 0;
+            let isTouch   = false;
+            
+            /* Game constants */
+            const GRAVITY       = 0.25;
+            const FLAP_STRENGTH = -7.5;
+            const MAX_FALL_SPEED= 8;
+            const BASE_SPEED    = 2.0;
+            const PIPE_WIDTH    = 52;
+            const BASE_GAP      = 200; // easier gap for new players
+            const MIN_GAP       = 180; // minimum gap height
+            const PIPE_SPAWN_INTERVAL = 95;
+            
+            /* Game variables */
+            let bird  = { x: 0, y: 0, velocity: 0, radius: 20 };
+            let pipes = [];
+            let score = 0;
+            let speed = BASE_SPEED;
+            let frameCount = 0;
+            let isPaused = false;
+            let currentPlayerName = '';
+            let lastGapY = 0;
+            
+            /* Storage keys */
+            const STORAGE_KEYS = {
+                CURRENT_NAME: 'vamp_flappy_current_name',
+                PLAYERS: 'vamp_flappy_players_v1'
+            };
+            
+            /* Player functions */
+            function loadCurrentPlayer() {
+                currentPlayerName = localStorage.getItem(STORAGE_KEYS.CURRENT_NAME) || '';
+                gameState = currentPlayerName ? GAME_STATES.START : GAME_STATES.NAME_DIALOG;
+                updateHUD();
+            }
+            function saveCurrentPlayer(name) {
+                currentPlayerName = name.trim() || 'Anonymous';
+                localStorage.setItem(STORAGE_KEYS.CURRENT_NAME, currentPlayerName);
+            }
+            function getPlayers() {
+                try {
+                    return JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAYERS)) || {};
+                } catch {
+                    return {};
+                }
+            }
+            function savePlayerScore(name, score) {
+                const players = getPlayers();
+                if (!players[name] || score > players[name].best) {
+                    players[name] = { best: score };
+                    localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(players));
+                }
+            }
+            function getCurrentPlayerBest() {
+                const players = getPlayers();
+                return players[currentPlayerName]?.best || 0;
+            }
+            
+            /* HUD update */
+            function updateHUD() {
+                document.getElementById('scoreDisplay').textContent = `Score: ${score}`;
+                document.getElementById('bestDisplay').textContent  = `Best: ${getCurrentPlayerBest()}`;
+                document.getElementById('playerDisplay').textContent= currentPlayerName || 'Player';
+            }
+            function updateScoreboard() {
+                updateHUD();
+                document.getElementById('finalScore').textContent   = `Score: ${score}`;
+            }
+            
+            /* Check if the input is on a HUD/button area */
+            function isInputOnHUD(event) {
+                const target = event.target;
+                return target.closest('.hud') || target.closest('.card');
+            }
+            
+            /* Handle flaps or starting the game */
+            function handleFlap(event) {
+                if (isInputOnHUD(event)) return;
+                event.preventDefault();
+                switch (gameState) {
+                    case GAME_STATES.START:
+                        startGame();
+                        break;
+                    case GAME_STATES.PLAYING:
+                        if (!isPaused) flap();
+                        break;
+                    case GAME_STATES.GAME_OVER:
+                        resetGame();
+                        break;
+                }
+            }
+            function flap() {
+                bird.velocity = FLAP_STRENGTH;
+            }
+            function startGame() {
+                gameState = GAME_STATES.PLAYING;
+                hideAllOverlays();
+                resetBird();
+                updateHint();
+            }
+            function resetGame() {
+                gameState   = GAME_STATES.START;
+                pipes       = [];
+                score       = 0;
+                speed       = BASE_SPEED;
+                frameCount  = 0;
+                lastGapY    = canvas.height * 0.5;
+                resetBird();
+                updateHUD();
+                updateHint();
+                showOverlay('startOverlay');
+            }
+            function resetBird() {
+                bird.x        = canvas.width  * 0.2;
+                bird.y        = canvas.height * 0.5;
+                bird.velocity = 0;
+            }
+            function togglePause() {
+                if (gameState === GAME_STATES.PLAYING) {
+                    isPaused = !isPaused;
+                    updateHint();
+                }
+            }
+            
+            /* Input listeners */
+            function addInputListeners() {
+                isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+                document.addEventListener('touchstart', handleFlap, { passive: false });
+                document.addEventListener('click', handleFlap);
+                document.addEventListener('pointerdown', handleFlap, { passive: false });
+                document.addEventListener('keydown', (event) => {
+                    switch (event.code) {
+                        case 'Space':
+                        case 'ArrowUp':
+                            event.preventDefault();
+                            if (gameState === GAME_STATES.PLAYING && !isPaused) {
+                                flap();
+                            } else if (gameState === GAME_STATES.START) {
+                                startGame();
+                            } else if (gameState === GAME_STATES.GAME_OVER) {
+                                resetGame();
+                            }
+                            break;
+                        case 'KeyP':
+                            event.preventDefault();
+                            togglePause();
+                            break;
+                        case 'Enter':
+                            event.preventDefault();
+                            if (gameState === GAME_STATES.GAME_OVER) {
+                                resetGame();
+                            }
+                            break;
+                    }
+                });
+            }
+            
+            /* Update hint text */
+            function updateHint() {
+                const hint = document.getElementById('hintText');
+                if (gameState === GAME_STATES.PLAYING && isPaused) {
+                    hint.textContent = 'Game Paused, my love';
+                } else if (gameState === GAME_STATES.START) {
+                    hint.textContent = isTouch ? 'Tap anywhere to flap, my love...' : 'Click or press Space/ArrowUp, my love... P = pause, Enter = restart';
+                } else if (gameState === GAME_STATES.PLAYING) {
+                    hint.textContent = isTouch ? 'Tap to flap, my love!' : 'Space/ArrowUp to flap, P = pause, my love';
+                } else if (gameState === GAME_STATES.GAME_OVER) {
+                    hint.textContent = isTouch ? 'Tap to try again, my love...' : 'Click or press Enter to restart, my love';
+                } else {
+                    hint.textContent = '';
+                }
+            }
+            
+            /* Game loop */
+            function gameLoop(currentTime) {
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+                if (gameState === GAME_STATES.PLAYING && !isPaused) {
+                    update(deltaTime);
+                }
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+            
+            /* Update physics & game objects */
+            function update(deltaTime) {
+                frameCount++;
+                bird.velocity += GRAVITY;
+                if (bird.velocity > MAX_FALL_SPEED) bird.velocity = MAX_FALL_SPEED;
+                bird.y += bird.velocity;
+                // boundary check with larger buffer
+                if (bird.y - bird.radius <= 30 || bird.y + bird.radius >= canvas.height - 30) {
+                    gameOver();
+                    return;
+                }
+                // update pipes & collisions
+                updatePipes();
+                checkCollisions();
+                // spawn new pipe
+                if (frameCount % PIPE_SPAWN_INTERVAL === 0) {
+                    spawnPipe();
+                }
+            }
+            
+            function spawnPipe() {
+                const gap = Math.max(MIN_GAP, BASE_GAP - Math.floor(score / 5) * 5);
+                const minY = gap / 2 + 60;
+                const maxY = canvas.height - gap / 2 - 60;
+                let gapY;
+                
+                // Make gaps more unpredictable and challenging
+                if (pipes.length === 0) {
+                    // First pipe in middle
+                    gapY = canvas.height * 0.5;
+                } else {
+                    // Random positioning with bias toward opposite of last gap
+                    const lastWasHigh = lastGapY < canvas.height * 0.5;
+                    const lastWasLow = lastGapY > canvas.height * 0.5;
+                    
+                    if (Math.random() < 0.7) { // 70% chance to vary from last position
+                        if (lastWasHigh) {
+                            // Last was high, bias toward low
+                            gapY = minY + Math.random() * (canvas.height * 0.7 - minY);
+                        } else if (lastWasLow) {
+                            // Last was low, bias toward high  
+                            gapY = canvas.height * 0.3 + Math.random() * (maxY - canvas.height * 0.3);
+                        } else {
+                            // Last was middle, go random high or low
+                            gapY = Math.random() < 0.5 ? 
+                                minY + Math.random() * (canvas.height * 0.4 - minY) :
+                                canvas.height * 0.6 + Math.random() * (maxY - canvas.height * 0.6);
+                        }
+                    } else {
+                        // 30% chance for completely random position
+                        gapY = minY + Math.random() * (maxY - minY);
+                    }
+                }
+                
+                lastGapY = gapY;
+                pipes.push({
+                    x: canvas.width,
+                    topHeight: gapY - gap / 2,
+                    bottomY: gapY + gap / 2,
+                    bottomHeight: canvas.height - (gapY + gap / 2),
+                    passed: false,
+                    width: PIPE_WIDTH
+                });
+            }
+            
+            function updatePipes() {
+                for (let i = pipes.length - 1; i >= 0; i--) {
+                    const p = pipes[i];
+                    p.x -= speed;
+                    // scoring
+                    if (!p.passed && bird.x > p.x + p.width) {
+                        p.passed = true;
+                        score++;
+                        speed += 0.02;
+                        // update personal best immediately
+                        const players = getPlayers();
+                        const best   = players[currentPlayerName]?.best || 0;
+                        if (score > best) {
+                            players[currentPlayerName] = { best: score };
+                            localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(players));
+                        }
+                        updateHUD();
+                        // show cute message every 3
+                        if (score % 3 === 0) showCuteMessage();
+                    }
+                    // remove off-screen pipes
+                    if (p.x + p.width < 0) pipes.splice(i, 1);
+                }
+            }
+            
+            function checkCollisions() {
+                for (const p of pipes) {
+                    if (circleRectCollision(bird.x, bird.y, bird.radius, p.x, 0, p.width, p.topHeight) ||
+                        circleRectCollision(bird.x, bird.y, bird.radius, p.x, p.bottomY, p.width, p.bottomHeight)) {
+                        gameOver();
+                        return;
+                    }
+                }
+            }
+            
+            /* Circle vs rectangle collision detection */
+            function circleRectCollision(cx, cy, radius, rx, ry, rw, rh) {
+                const closestX = Math.max(rx, Math.min(cx, rx + rw));
+                const closestY = Math.max(ry, Math.min(cy, ry + rh));
+                const dx = cx - closestX;
+                const dy = cy - closestY;
+                return dx * dx + dy * dy < radius * radius;
+            }
+            
+            /* Drawing code */
+            function draw() {
+                const w = canvas.width;
+                const h = canvas.height;
+                // clear
+                ctx.clearRect(0, 0, w, h);
+                // background
+                const gradient = ctx.createRadialGradient(
+                    w / 2, h / 2, 0,
+                    w / 2, h / 2, Math.max(w, h) / 2
+                );
+                gradient.addColorStop(0, '#600202');
+                gradient.addColorStop(1, '#240404');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, w, h);
+                // pipes
+                ctx.fillStyle   = '#2d5a2d';
+                ctx.strokeStyle = '#8b0000';
+                ctx.lineWidth   = 3;
+                for (const p of pipes) {
+                    // top
+                    ctx.fillRect(p.x, 0, p.width, p.topHeight);
+                    ctx.strokeRect(p.x, 0, p.width, p.topHeight);
+                    // bottom
+                    ctx.fillRect(p.x, p.bottomY, p.width, p.bottomHeight);
+                    ctx.strokeRect(p.x, p.bottomY, p.width, p.bottomHeight);
+                    // rims
+                    ctx.fillStyle = '#8b0000';
+                    ctx.fillRect(p.x, p.topHeight - 5, p.width, 5);
+                    ctx.fillRect(p.x, p.bottomY, p.width, 5);
+                    ctx.fillStyle = '#2d5a2d';
+                }
+                // vampire bird
+                if (gameState !== GAME_STATES.NAME_DIALOG) {
+                    drawVampireBird();
+                }
+            }
+            
+            function drawVampireBird() {
+                const x = bird.x;
+                const y = bird.y;
+                const r = bird.radius;
+                // body
+                ctx.fillStyle   = '#f5f5dc';
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth   = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                // eye
+                const eyeX = x + r * 0.3;
+                const eyeY = y - r * 0.2;
+                const eyeR = r * 0.25;
+                ctx.fillStyle = '#8b0000';
+                ctx.beginPath();
+                ctx.arc(eyeX, eyeY, eyeR, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ff4444';
+                ctx.beginPath();
+                ctx.arc(eyeX - eyeR * 0.3, eyeY - eyeR * 0.3, eyeR * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+                // fangs
+                const fangSize = r * 0.15;
+                const fang1X   = x - fangSize * 0.5;
+                const fang1Y   = y + r * 0.3;
+                const fang2X   = x + fangSize * 0.5;
+                const fang2Y   = y + r * 0.3;
+                ctx.fillStyle  = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(fang1X - fangSize, fang1Y);
+                ctx.lineTo(fang1X, fang1Y - fangSize);
+                ctx.lineTo(fang1X + fangSize, fang1Y);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(fang2X - fangSize, fang2Y);
+                ctx.lineTo(fang2X, fang2Y - fangSize);
+                ctx.lineTo(fang2X + fangSize, fang2Y);
+                ctx.closePath();
+                ctx.fill();
+                // wing effect when flapping
+                if (bird.velocity < 0) {
+                    ctx.strokeStyle = '#d0d0d0';
+                    ctx.lineWidth   = 3;
+                    ctx.beginPath();
+                    ctx.arc(x - r * 0.8, y, r * 0.6, -Math.PI * 0.3, Math.PI * 0.3);
+                    ctx.stroke();
+                }
+            }
+            
+            /* Overlay management */
+            function showOverlay(id) {
+                document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+                document.getElementById(id).classList.remove('hidden');
+            }
+            function hideAllOverlays() {
+                document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+            }
+            
+            /* HUD button handlers */
+            function setupHUDButtons() {
+                // Change name
+                document.getElementById('changeNameBtn').addEventListener('click', () => {
+                    gameState = GAME_STATES.NAME_DIALOG;
+                    showOverlay('nameDialog');
+                    document.getElementById('nameInput').value = currentPlayerName;
+                    document.getElementById('nameInput').focus();
+                });
+                // Pause
+                document.getElementById('pauseBtn').addEventListener('click', () => {
+                    togglePause();
+                    document.getElementById('pauseBtn').textContent = isPaused ? 'Resume' : 'Pause';
+                });
+                // Restart
+                document.getElementById('restartBtn').addEventListener('click', () => {
+                    resetGame();
+                    hideAllOverlays();
+                });
+                // Name dialog play
+                document.getElementById('playBtn').addEventListener('click', () => {
+                    const name = document.getElementById('nameInput').value.trim();
+                    if (name) {
+                        saveCurrentPlayer(name);
+                        gameState = GAME_STATES.START;
+                        updateHUD();
+                        hideAllOverlays();
+                        showOverlay('startOverlay');
+                    }
+                });
+                // Name dialog cancel (fallback if no name yet)
+                document.getElementById('cancelBtn').addEventListener('click', () => {
+                    if (!currentPlayerName) {
+                        saveCurrentPlayer('Player');
+                        updateHUD();
+                    }
+                    gameState = GAME_STATES.START;
+                    hideAllOverlays();
+                    showOverlay('startOverlay');
+                    updateHint();
+                });
+                // Name input enter
+                document.getElementById('nameInput').addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') document.getElementById('playBtn').click();
+                });
+            }
+            
+            /* Romantic cute messages */
+            const CUTE_MESSAGES = [
+                "My undead heart beats for you, my love! ❤️",
+                "Your bite is the sweetest, my love! 🧛‍♀️",
+                "You make my immortal heart flutter! 💕",
+                "Eternally yours, my love!",
+                "Our love is everlasting like the night! 🌙",
+                "You're my bloody valentine! 🩸",
+                "Forever in your embrace, my love! 🦇",
+                "Bite me, my love! 😘",
+                "I'm batty in love with you! 🦇💕",
+                "You're my favorite vampire, my love! 🧛‍♂️❤️"
+            ];
+            
+            function showCuteMessage() {
+                const msgEl   = document.getElementById('cuteMessage');
+                const message = CUTE_MESSAGES[Math.floor(Math.random() * CUTE_MESSAGES.length)];
+                msgEl.textContent = message;
+                msgEl.classList.add('show');
+                setTimeout(() => { msgEl.classList.remove('show'); }, 1800);
+            }
+            
+            /* Initialize the game */
+            function initializeGame() {
+                setupHUDButtons();
+                loadCurrentPlayer();
+                if (gameState === GAME_STATES.NAME_DIALOG) {
+                    showOverlay('nameDialog');
+                    document.getElementById('nameInput').focus();
+                } else {
+                    showOverlay('startOverlay');
+                }
+                updateHint();
+            }
+            
+            /* Game over handler */
+            function gameOver() {
+                gameState = GAME_STATES.GAME_OVER;
+                savePlayerScore(currentPlayerName, score);
+                updateScoreboard();
+                updateHint();
+                showOverlay('gameOverOverlay');
+            }
+            
+            /* Overlay click-to-start/restart */
+            document.getElementById('startOverlay').addEventListener('click', (e) => {
+                e.preventDefault();
+                startGame();
+            });
+            document.getElementById('gameOverOverlay').addEventListener('click', (e) => {
+                e.preventDefault();
+                resetGame();
+                hideAllOverlays();
+            });
+            
+            /* Kick off */
+            addInputListeners();
+            resetBird();
+            initializeGame();
+            requestAnimationFrame(gameLoop);
+            
+            console.log('Vampire Flappy - Romantic edition initialized!');
+        })();
+    </script>
+</body>
+</html>
