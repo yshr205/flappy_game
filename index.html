@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Vampire Flappy ❤️🩸</title>
+<style>
+  /* === Fullscreen, mobile-first, no-scroll === */
+  html, body {
+    margin: 0;
+    height: 100svh;       /* fallback */
+    min-height: 100vh;    /* fallback */
+    overflow: hidden;
+    background: radial-gradient(120% 120% at 50% 0%,
+               #3c0008 0%, #1a0004 45%, #0b0005 100%);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+                 Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    overscroll-behavior: none;
+  }
+  /* ensure padding/border don’t push inputs outside their boxes */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* Stage holds the canvas + overlays, sized by a JS-updated --vh */
+  #stage {
+    position: relative;
+    width: 100%;
+    height: calc(var(--vh, 1vh) * 100);
+    touch-action: manipulation;
+  }
+
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: #0f0f14;       /* night sky */
+    z-index: 0;
+    touch-action: none;        /* don’t scroll on touch */
+  }
+
+  /* === HUD === */
+  #hudTop {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;           /* wrap on narrow screens */
+    gap: 8px;
+    padding: 6px 10px;
+    pointer-events: none;      /* taps pass through except explicit buttons */
+    z-index: 2;
+  }
+
+  #scoreboard {
+    display: inline-flex;
+    gap: 10px;
+    font-weight: 800;
+    background: rgba(255,0,32,0.16);
+    padding: 6px 10px;
+    border-radius: 12px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
+    pointer-events: auto;
+    border: 1px solid rgba(255,0,32,0.3);
+  }
+  #score::before { content: "🩸 "; }
+  #best::before  { content: "🦇 "; }
+
+  #buttons {
+    display: inline-flex;
+    gap: 8px;
+    pointer-events: auto;
+  }
+  .btn {
+    border: 0;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-weight: 800;
+    color: #fff;
+    background: linear-gradient(180deg, #c4102a 0%, #8a0a1c 100%);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+  }
+
+  /* Bottom hint / messages */
+  #hint {
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    left: 0; right: 0;
+    text-align: center;
+    color: #ffd4da;
+    font-size: 14px;
+    opacity: 0.95;
+    padding: 0 10px;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* Name prompt overlay (first time / change name) */
+  #nameOverlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: none; /* shown programmatically */
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+  }
+  #nameCard {
+    background: #1a0007;
+    border: 1px solid #b9112a;
+    border-radius: 14px;
+    padding: 16px;
+    width: min(92vw, 420px);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.5);
+    text-align: center;
+  }
+  #nameCard h2 {
+    margin: 0 0 10px;
+    font-size: 20px;
+    color: #ffd4da;
+  }
+  #playerName {
+    width: 100%;
+    max-width: 100%;
+    display: block;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #b9112a;
+    background: #0f0b0d;
+    color: #fff;
+    font-size: 16px;
+  }
+  #nameActions { margin-top: 12px; display: flex; gap: 8px; justify-content: center; }
+  .ghost {
+    background: transparent;
+    border: 1px solid #b9112a;
+  }
+
+  /* Slightly smaller HUD on very narrow screens */
+  @media (max-width: 390px) {
+    #scoreboard { font-size: 14px; padding: 4px 8px; border-radius: 10px; }
+    .btn { padding: 6px 10px; font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game"></canvas>
+
+    <div id="hudTop">
+      <div id="scoreboard">
+        <span id="score">Score: 0</span>
+        <span id="best">Best: 0</span>
+        <span id="who" style="opacity:.9;"></span>
+      </div>
+      <div id="buttons">
+        <button id="nameBtn" class="btn ghost">Change name</button>
+        <button id="pauseBtn" class="btn">Pause</button>
+        <button id="restartBtn" class="btn">Restart</button>
+      </div>
+    </div>
+
+    <div id="hint">Tap anywhere to flap • Use Pause ⏸ and Restart 🔁</div>
+
+    <!-- Player name overlay -->
+    <div id="nameOverlay">
+      <div id="nameCard">
+        <h2>Enter your vampire name 🦇</h2>
+        <input id="playerName" type="text" placeholder="Your name" maxlength="24" />
+        <div id="nameActions">
+          <button id="saveName" class="btn">Play</button>
+          <button id="cancelName" class="btn ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const stage   = document.getElementById('stage');
+  const canvas  = document.getElementById('game');
+  const ctx     = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl  = document.getElementById('best');
+  const whoEl   = document.getElementById('who');
+  const pauseBtn   = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const nameBtn    = document.getElementById('nameBtn');
+  const hint       = document.getElementById('hint');
+
+  /* ======== Dynamic viewport height to perfectly fit iPhone Safari ======== */
+  function setVH() {
+    document.documentElement.style.setProperty('--vh', (window.innerHeight * 0.01) + 'px');
+  }
+  setVH();
+  window.addEventListener('resize', setVH, { passive: true });
+  window.addEventListener('orientationchange', () => setTimeout(setVH, 150), { passive: true });
+
+  /* ======== Fullscreen canvas with crisp but lightweight scaling ======== */
+  function resizeCanvas() {
+    const w = Math.floor(stage.clientWidth);
+    const h = Math.floor(stage.clientHeight);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w;   // DPR=1 for perf (feels like original on phones)
+    canvas.height = h;
+    BIRD_X = Math.round(canvas.width * 0.28);  // ~28% from left, like classic feel
+  }
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 150));
+
+  /* ======== Classic-ish Flappy tuning (60fps-friendly) ======== */
+  let BIRD_X = 100;                // updated by resizeCanvas()
+  const BIRD_RADIUS = 18;
+
+  const GRAVITY = 0.25;            // px/frame^2
+  const FLAP_STRENGTH = -7.5;      // initial upward velocity
+  const MAX_FALL_SPEED = 8;        // cap downward velocity
+
+  const PIPE_WIDTH = 52;
+  const BASE_PIPE_GAP = 140;
+  const MIN_GAP = 120;
+  const PIPE_INTERVAL = 95;        // ~1.6s at 60fps
+  const BASE_SPEED = 2.0;
+  const SPEED_INCREASE = 0.02;
+
+  const CUTE_MESSAGES = [
+    "Thirsty for victory 🩸",
+    "You fly like a bat, my love!",
+    "Fangtastic!",
+    "Crimson streak! Keep going!",
+    "You make my undead heart race ❤️",
+    "Elegantly vicious!",
+    "Night belongs to you 🦇"
+  ];
+
+  /* ======== Per-player best: stored by name in localStorage (per device) ======== */
+  const STORAGE_KEY = 'vamp_flappy_players_v1';
+  const NAME_KEY    = 'vamp_flappy_current_name';
+  const nameOverlay = document.getElementById('nameOverlay');
+  const playerNameInput = document.getElementById('playerName');
+  const saveNameBtn = document.getElementById('saveName');
+  const cancelNameBtn = document.getElementById('cancelName');
+
+  function loadPlayers() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+    catch { return {}; }
+  }
+  function savePlayers(obj) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+  }
+  function getCurrentName() { return localStorage.getItem(NAME_KEY) || ''; }
+  function setCurrentName(n) { localStorage.setItem(NAME_KEY, n); }
+
+  function openNameOverlay(preset='') {
+    playerNameInput.value = preset;
+    nameOverlay.style.display = 'flex';
+    setTimeout(() => playerNameInput.focus(), 0);
+  }
+  function closeNameOverlay() {
+    nameOverlay.style.display = 'none';
+  }
+
+  let players = loadPlayers();
+  let playerName = getCurrentName();
+  if (!playerName) openNameOverlay('');
+
+  saveNameBtn.addEventListener('click', () => {
+    const n = (playerNameInput.value || '').trim() || 'Player';
+    playerName = n;
+    setCurrentName(n);
+    if (!players[n]) players[n] = { best: 0 };
+    savePlayers(players);
+    whoEl.textContent = `(${n})`;
+    bestEl.textContent = `Best: ${players[n].best | 0}`;
+    closeNameOverlay();
+  });
+  cancelNameBtn.addEventListener('click', () => {
+    if (!playerName) {
+      playerName = 'Player';
+      setCurrentName(playerName);
+      if (!players[playerName]) players[playerName] = { best: 0 };
+      savePlayers(players);
+    }
+    whoEl.textContent = `(${playerName})`;
+    bestEl.textContent = `Best: ${players[playerName].best | 0}`;
+    closeNameOverlay();
+  });
+  nameBtn.addEventListener('click', () => openNameOverlay(getCurrentName()));
+
+  /* ======== Game state ======== */
+  let birdY, birdVel, pipes, pipeTimer, score, speed, state;
+  let currentMessage = null, messageEndTime = 0;
+
+  function updateScoreboard() {
+    scoreEl.textContent = `Score: ${score}`;
+    bestEl.textContent  = `Best: ${players[playerName]?.best | 0}`;
+  }
+
+  function resetGame() {
+    if (!playerName) openNameOverlay('');
+    players = loadPlayers();
+    if (!players[playerName]) players[playerName] = { best: 0 };
+    whoEl.textContent = `(${playerName})`;
+    bestEl.textContent = `Best: ${players[playerName].best | 0}`;
+
+    birdY = canvas.height / 2;
+    birdVel = 0;
+    pipes = [];
+    pipeTimer = 0;
+    score = 0;
+    speed = BASE_SPEED;
+    currentMessage = null;
+    messageEndTime = 0;
+    state = 'start';
+    updateScoreboard();
+    hint.textContent = 'Tap anywhere to flap • Use Pause ⏸ and Restart 🔁';
+    hint.style.display = '';
+  }
+
+  function spawnPipe() {
+    const gap = Math.max(MIN_GAP, BASE_PIPE_GAP - score * 1.5);
+    const gapY = Math.random() * (canvas.height - gap - 100) + 50;
+    pipes.push({ x: canvas.width, gapY, gapHeight: gap, passed: false });
+  }
+
+  function flap() {
+    if (state === 'start') { state = 'running'; hint.style.display = 'none'; }
+    if (state === 'running') { birdVel = FLAP_STRENGTH; }
+    else if (state === 'gameover') { resetGame(); }
+  }
+
+  function togglePause() {
+    if (state === 'running') { state = 'paused'; pauseBtn.textContent = 'Resume'; }
+    else if (state === 'paused') { state = 'running'; pauseBtn.textContent = 'Pause'; }
+  }
+
+  function update() {
+    if (state !== 'running') return;
+
+    // Physics
+    birdVel += GRAVITY;
+    if (birdVel > MAX_FALL_SPEED) birdVel = MAX_FALL_SPEED;
+    birdY += birdVel;
+
+    // Pipes
+    pipeTimer++;
+    if (pipeTimer >= PIPE_INTERVAL) { spawnPipe(); pipeTimer = 0; }
+    for (let i = 0; i < pipes.length; i++) {
+      const p = pipes[i];
+      p.x -= speed;
+      if (!p.passed && p.x + PIPE_WIDTH < BIRD_X) {
+        p.passed = true;
+        score++;
+        speed += SPEED_INCREASE;
+
+        // Update per-player best
+        if (score > (players[playerName].best | 0)) {
+          players[playerName].best = score;
+          savePlayers(players);
+        }
+        updateScoreboard();
+
+        // Vampire message every 3
+        if (score % 3 === 0) {
+          const idx = ((score / 3) - 1) % CUTE_MESSAGES.length;
+          currentMessage = CUTE_MESSAGES[idx];
+          messageEndTime = performance.now() + 1800;
+        }
+      }
+    }
+    while (pipes.length && pipes[0].x + PIPE_WIDTH < 0) pipes.shift();
+
+    // Collisions
+    if (birdY + BIRD_RADIUS > canvas.height || birdY - BIRD_RADIUS < 0) state = 'gameover';
+    pipes.forEach(p => {
+      if (BIRD_X + BIRD_RADIUS > p.x && BIRD_X - BIRD_RADIUS < p.x + PIPE_WIDTH) {
+        if (birdY - BIRD_RADIUS < p.gapY || birdY + BIRD_RADIUS > p.gapY + p.gapHeight) state = 'gameover';
+      }
+    });
+
+    if (state === 'gameover') {
+      currentMessage = null;
+      messageEndTime = 0;
+      hint.textContent = `Game Over, ${playerName}! Score: ${score}. Tap to restart.`;
+      hint.style.display = '';
+      pauseBtn.textContent = 'Pause';
+    }
+  }
+
+  function draw() {
+    // Night sky
+    ctx.fillStyle = '#0f0f14';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Pipes (bloody red rims)
+    pipes.forEach(p => {
+      ctx.fillStyle = '#17984e';
+      ctx.fillRect(p.x, 0, PIPE_WIDTH, p.gapY);
+      ctx.fillRect(p.x, p.gapY + p.gapHeight, PIPE_WIDTH, canvas.height - (p.gapY + p.gapHeight));
+      ctx.fillStyle = 'rgba(185,17,42,0.6)';
+      ctx.fillRect(p.x, p.gapY - 6, PIPE_WIDTH, 6);
+      ctx.fillRect(p.x, p.gapY + p.gapHeight, PIPE_WIDTH, 6);
+    });
+
+    // Bird (pale with red eye + fangs)
+    ctx.fillStyle = '#f6e9ec';
+    ctx.beginPath();
+    ctx.arc(BIRD_X, birdY, BIRD_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#b9112a'; // eye
+    ctx.beginPath();
+    ctx.arc(BIRD_X + 6, birdY - 4, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tiny fangs
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(BIRD_X + 2, birdY + 6);  ctx.lineTo(BIRD_X + 4,  birdY + 12); ctx.lineTo(BIRD_X + 6,  birdY + 6);  ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(BIRD_X + 8, birdY + 6);  ctx.lineTo(BIRD_X + 10, birdY + 12); ctx.lineTo(BIRD_X + 12, birdY + 6); ctx.closePath(); ctx.fill();
+
+    // Milestone message overlay
+    if (state === 'running' && currentMessage && performance.now() < messageEndTime) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '20px Arial';
+      ctx.fillStyle = 'rgba(255, 160, 176, 0.96)';
+      ctx.fillText(currentMessage, canvas.width / 2, 46);
+      ctx.restore();
+    } else if (currentMessage && performance.now() >= messageEndTime) {
+      currentMessage = null;
+    }
+
+    // Start / Paused overlays
+    if (state === 'start') {
+      ctx.fillStyle = '#ffd4da';
+      ctx.textAlign = 'center';
+      ctx.font = '24px Arial';
+      ctx.fillText('Tap to start', canvas.width / 2, canvas.height / 2 - 26);
+      ctx.font = '16px Arial';
+      ctx.fillText('Tap anywhere to flap', canvas.width / 2, canvas.height / 2);
+    } else if (state === 'paused') {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = '26px Arial';
+      ctx.fillText('Paused', canvas.width/2, canvas.height/2);
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  /* ======== Input: listen on the WHOLE STAGE so taps always start ======== */
+  function handleTap(e) {
+    // Ignore taps on buttons or the name dialog
+    if (e.target.closest('#buttons') || e.target.closest('#nameCard')) return;
+    e.preventDefault();
+    flap();
+  }
+  stage.addEventListener('touchstart', handleTap, { passive: false });
+  stage.addEventListener('pointerdown', handleTap, { passive: false });
+  stage.addEventListener('click', handleTap);
+
+  pauseBtn.addEventListener('click', () => {
+    if (state === 'running' || state === 'paused') togglePause();
+  });
+  restartBtn.addEventListener('click', () => resetGame());
+
+  /* ======== Boot ======== */
+  resizeCanvas();
+  if (playerName) {
+    if (!players[playerName]) players[playerName] = { best: 0 };
+    whoEl.textContent = `(${playerName})`;
+    bestEl.textContent = `Best: ${players[playerName].best | 0}`;
+  }
+  loop();
+  resetGame();
+})();
+</script>
+</body>
+</html>
