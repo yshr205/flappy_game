@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Flappy Bird</title>
+    <style>
+        /* Reset and base styles */
+        html, body {
+            height: 100%;
+            margin: 0;
+            /* Use a playful font for a more charming feel */
+            font-family: 'Comic Sans MS', 'Comic Sans', cursive, sans-serif;
+            /* Romantic gradient background */
+            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            margin-top: 24px;
+            font-size: 32px;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        #game-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.35);
+            border-radius: 24px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+            width: 100%;
+            max-width: 600px;
+        }
+        canvas {
+            background: #121418;
+            border: 2px solid #24313b;
+            border-radius: 12px;
+            image-rendering: pixelated;
+            /* Allow the canvas to scale to the width of its container on smaller devices */
+            width: 100%;
+            height: auto;
+            max-width: 480px;
+        }
+        #scoreboard {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 16px;
+            font-size: 20px;
+            margin: 12px 0;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 6px 12px;
+            border-radius: 14px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+        /* Add cute hearts before the score and best labels */
+        #scoreboard #score::before {
+            content: '❤️ ';
+        }
+        #scoreboard #best::before {
+            content: '💖 ';
+        }
+        #controls {
+            margin: 12px 0;
+        }
+        #controls button {
+            appearance: none;
+            border: none;
+            background: linear-gradient(180deg, #ff758c 0%, #ff7eb3 100%);
+            color: #fff;
+            padding: 10px 18px;
+            margin-right: 12px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        #controls button:hover {
+            opacity: 0.9;
+        }
+        #controls button:active {
+            transform: scale(0.97);
+        }
+        #instructions {
+            font-size: 14px;
+            color: #f0e6f6;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media screen and (max-width: 600px) {
+            h1 {
+                font-size: 26px;
+            }
+            #scoreboard {
+                flex-direction: column;
+                align-items: center;
+                gap: 8px;
+                font-size: 18px;
+            }
+            #controls button {
+                padding: 8px 12px;
+                margin-right: 6px;
+                margin-top: 6px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Enhanced Flappy Bird</h1>
+    <div id="game-container">
+        <canvas id="game" width="480" height="640"></canvas>
+        <div id="scoreboard">
+            <span id="score">Score: 0</span>
+            <span id="best">Best: 0</span>
+        </div>
+        <div id="controls">
+            <button id="pauseBtn">Pause</button>
+            <button id="restartBtn">Restart</button>
+        </div>
+        <div id="instructions">Tap or click to flap. Press P to pause/resume. Enter to restart.</div>
+    </div>
+
+    <script>
+        (function () {
+            const canvas = document.getElementById('game');
+            const ctx = canvas.getContext('2d');
+            const scoreEl = document.getElementById('score');
+            const bestEl = document.getElementById('best');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const restartBtn = document.getElementById('restartBtn');
+            const instructions = document.getElementById('instructions');
+            // Game constants
+            const BIRD_X = 100;                // fixed horizontal position of bird
+            const BIRD_RADIUS = 18;            // radius of bird circle
+            // Adjusted physics constants to further slow the game down.  A lower gravity
+            // reduces falling speed and a slightly gentler flap means the bird jumps less
+            // aggressively. These tweaks make the game more accessible for beginners.
+            const GRAVITY = 0.18;             // gravitational acceleration (further reduced for a gentler fall)
+            const FLAP_STRENGTH = -5.5;        // initial velocity when flapping (makes jumps smaller)
+            // Limit the maximum downward velocity to avoid the bird plummeting too fast.  Lower
+            // values make the descent slower and steadier.
+            const MAX_FALL_SPEED = 5;          // maximum fall speed per frame
+            const PIPE_WIDTH = 70;             // width of each pipe
+            const BASE_PIPE_GAP = 200;         // base gap height between pipes (was 180)
+            const MIN_GAP = 160;               // minimum gap height (was 140)
+            // Increase the interval between pipes to give the player more time to react
+            const PIPE_INTERVAL = 180;         // frames between pipes (increased from 160)
+            // Reduce the starting speed of pipes so they move across the screen more slowly
+            const BASE_SPEED = 1.0;            // starting speed of pipes (was 1.2)
+            // Make the incremental speed increase very gentle to maintain an easy pace
+            const SPEED_INCREASE = 0.015;      // speed increment per score point (was 0.02)
+
+            // Messages to display when the player hits certain score milestones.  When the
+            // score is a multiple of 3 (e.g. 3, 6, 9...) we pick the next message from
+            // this list and show it briefly at the top of the game area.  Feel free to
+            // add more phrases to keep it fun!
+            const CUTE_MESSAGES = [
+                // Sweet messages tailored for a loved one.  Feel free to customize these
+                // to make the game feel more personal and romantic!
+                "You're amazing, my love!",
+                "You're doing great, sweetheart!",
+                "So proud of you, darling!",
+                "You make my heart soar!",
+                "You're my favorite player!",
+                "Keep flying, cutie!",
+                "Love you! ❤️"
+            ];
+            // Game state variables
+            let birdY;
+            let birdVel;
+            let pipes;
+            let pipeTimer;
+            let score;
+            let best = parseInt(localStorage.getItem('flappyBest')) || 0;
+            let speed;
+            let state = 'start'; // possible: 'start', 'running', 'paused', 'gameover'
+            // Current on-screen message and its expiry time (in milliseconds since epoch).
+            let currentMessage = null;
+            let messageEndTime = 0;
+
+            bestEl.textContent = `Best: ${best}`;
+
+            // Reset game variables
+            function resetGame() {
+                birdY = canvas.height / 2;
+                birdVel = 0;
+                pipes = [];
+                pipeTimer = 0;
+                score = 0;
+                speed = BASE_SPEED;
+                updateScoreboard();
+
+                // Reset message overlay
+                currentMessage = null;
+                messageEndTime = 0;
+            }
+
+            // Spawn a new pipe with random gap position
+            function spawnPipe() {
+                // gap decreases as score increases, but not below MIN_GAP
+                const gap = Math.max(MIN_GAP, BASE_PIPE_GAP - score * 2);
+                const gapY = Math.random() * (canvas.height - gap - 100) + 50; // keep gap away from top/bottom
+                pipes.push({
+                    x: canvas.width,
+                    gapY: gapY,
+                    gapHeight: gap,
+                    passed: false
+                });
+            }
+
+            function flap() {
+                if (state === 'start') {
+                    // start running on first flap
+                    state = 'running';
+                    instructions.style.display = 'none';
+                }
+                if (state === 'running') {
+                    birdVel = FLAP_STRENGTH;
+                } else if (state === 'gameover') {
+                    // restart on flap after gameover
+                    state = 'start';
+                    instructions.style.display = '';
+                    resetGame();
+                }
+            }
+
+            function togglePause() {
+                if (state === 'running') {
+                    state = 'paused';
+                    pauseBtn.textContent = 'Resume';
+                } else if (state === 'paused') {
+                    state = 'running';
+                    pauseBtn.textContent = 'Pause';
+                }
+            }
+
+            function updateScoreboard() {
+                scoreEl.textContent = `Score: ${score}`;
+                bestEl.textContent = `Best: ${best}`;
+            }
+
+            function update() {
+                if (state !== 'running') return;
+                // apply gravity and update bird position
+                birdVel += GRAVITY;
+                // Cap the falling speed so the bird doesn't accelerate downward too quickly
+                if (birdVel > MAX_FALL_SPEED) birdVel = MAX_FALL_SPEED;
+                birdY += birdVel;
+                // spawn new pipes at intervals
+                pipeTimer++;
+                if (pipeTimer >= PIPE_INTERVAL) {
+                    spawnPipe();
+                    pipeTimer = 0;
+                }
+                // move pipes and handle scoring
+                for (let i = 0; i < pipes.length; i++) {
+                    const p = pipes[i];
+                    p.x -= speed;
+                    // check if pipe passed the bird for scoring
+                    if (!p.passed && p.x + PIPE_WIDTH < BIRD_X) {
+                        p.passed = true;
+                        score++;
+                        // speed up slightly as score increases
+                        speed += SPEED_INCREASE;
+                        // update best score
+                        if (score > best) {
+                            best = score;
+                            localStorage.setItem('flappyBest', best);
+                        }
+                        updateScoreboard();
+                        // If the player has reached a multiple of 3 points (e.g. 3, 6, 9...),
+                        // display a cute congratulatory message for a short time.  The message
+                        // cycles through the CUTE_MESSAGES array based on how many milestones
+                        // have been reached.  Only show messages during gameplay (not paused or game over).
+                        if (state === 'running' && score > 0 && score % 3 === 0) {
+                            // Determine which message to show based on how many milestones achieved
+                            const idx = ((score / 3) - 1) % CUTE_MESSAGES.length;
+                            currentMessage = CUTE_MESSAGES[idx];
+                            // Set the message to expire in 2 seconds
+                            messageEndTime = performance.now() + 2000;
+                        }
+                    }
+                }
+                // remove off-screen pipes
+                while (pipes.length && pipes[0].x + PIPE_WIDTH < 0) {
+                    pipes.shift();
+                }
+                // collision detection with ground or ceiling
+                if (birdY + BIRD_RADIUS > canvas.height || birdY - BIRD_RADIUS < 0) {
+                    state = 'gameover';
+                }
+                // collision detection with pipes
+                pipes.forEach(p => {
+                    // horizontal overlap
+                    if (BIRD_X + BIRD_RADIUS > p.x && BIRD_X - BIRD_RADIUS < p.x + PIPE_WIDTH) {
+                        // vertical collision: if bird is outside the gap
+                        if (birdY - BIRD_RADIUS < p.gapY || birdY + BIRD_RADIUS > p.gapY + p.gapHeight) {
+                            state = 'gameover';
+                        }
+                    }
+                });
+                // if game over, update best score, show overlay
+                if (state === 'gameover') {
+                    // Clear any current message overlay when the game ends
+                    currentMessage = null;
+                    messageEndTime = 0;
+                    instructions.textContent = `Game Over! Score: ${score}. Tap or press Enter to restart.`;
+                    instructions.style.display = '';
+                    pauseBtn.textContent = 'Pause';
+                }
+            }
+
+            function draw() {
+                // clear canvas
+                ctx.fillStyle = '#121418';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // draw pipes
+                pipes.forEach(p => {
+                    ctx.fillStyle = '#34c77a';
+                    // upper pipe
+                    ctx.fillRect(p.x, 0, PIPE_WIDTH, p.gapY);
+                    // lower pipe
+                    ctx.fillRect(p.x, p.gapY + p.gapHeight, PIPE_WIDTH, canvas.height - (p.gapY + p.gapHeight));
+                });
+                // draw bird
+                ctx.fillStyle = '#ffd966';
+                ctx.beginPath();
+                ctx.arc(BIRD_X, birdY, BIRD_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+                // optional: draw eye
+                ctx.fillStyle = '#1c2a28';
+                ctx.beginPath();
+                ctx.arc(BIRD_X + 6, birdY - 4, 4, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Draw any active milestone message on top of the gameplay.  Messages
+                // appear near the top of the canvas and vanish after the expiry time.
+                if (state === 'running' && currentMessage && performance.now() < messageEndTime) {
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.font = '20px Arial';
+                    ctx.fillStyle = 'rgba(247, 197, 120, 0.9)';
+                    ctx.fillText(currentMessage, canvas.width / 2, 50);
+                    ctx.restore();
+                } else if (currentMessage && performance.now() >= messageEndTime) {
+                    // Clear the message once its time has passed
+                    currentMessage = null;
+                }
+                // draw overlay texts for start, paused, or gameover
+                if (state === 'start') {
+                    ctx.fillStyle = '#e1e1e1';
+                    ctx.textAlign = 'center';
+                    ctx.font = '24px Arial';
+                    ctx.fillText('Tap or click to start', canvas.width / 2, canvas.height / 2 - 30);
+                    ctx.font = '16px Arial';
+                    ctx.fillText('Press space/ArrowUp to flap', canvas.width / 2, canvas.height / 2);
+                } else if (state === 'paused') {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.font = '26px Arial';
+                    ctx.fillText('Paused', canvas.width / 2, canvas.height / 2);
+                } else if (state === 'gameover') {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.font = '26px Arial';
+                    ctx.fillText('Game Over!', canvas.width / 2, canvas.height / 2 - 30);
+                    ctx.font = '18px Arial';
+                    ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2);
+                    ctx.fillText(`Best: ${best}`, canvas.width / 2, canvas.height / 2 + 30);
+                    ctx.fillText('Tap or press Enter to restart', canvas.width / 2, canvas.height / 2 + 60);
+                }
+            }
+
+            function gameLoop() {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+
+            // Event listeners
+            document.addEventListener('keydown', (e) => {
+                const k = e.key;
+                if (k === ' ' || k === 'ArrowUp') {
+                    e.preventDefault();
+                    flap();
+                } else if (k === 'p' || k === 'P') {
+                    togglePause();
+                } else if (k === 'Enter' && state === 'gameover') {
+                    state = 'start';
+                    instructions.style.display = '';
+                    resetGame();
+                }
+            });
+            canvas.addEventListener('click', flap);
+            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); flap(); });
+            pauseBtn.addEventListener('click', () => {
+                if (state === 'running' || state === 'paused') {
+                    togglePause();
+                }
+            });
+            restartBtn.addEventListener('click', () => {
+                state = 'start';
+                instructions.style.display = '';
+                resetGame();
+            });
+
+            // Initialize and start loop
+            resetGame();
+            gameLoop();
+        })();
+    </script>
+</body>
+</html>
