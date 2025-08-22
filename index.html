@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Vampire Flappy</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            background: radial-gradient(circle at center, #4a0e0e, #1a0505);
+            color: #fff;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        
+        #stage {
+            position: relative;
+            width: 100%;
+            height: calc(var(--vh) * 100);
+            touch-action: manipulation;
+        }
+        
+        #gameCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            cursor: pointer;
+        }
+        
+        .hud {
+            position: absolute;
+            top: env(safe-area-inset-top, 0);
+            left: 0;
+            right: 0;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 8px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .hud-left, .hud-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .hud-item {
+            background: linear-gradient(135deg, #8b0000, #4a0000);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-weight: bold;
+            font-size: 14px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+        
+        .hud-button {
+            pointer-events: auto;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .hud-button:hover {
+            background: linear-gradient(135deg, #a00000, #600000);
+            transform: translateY(-1px);
+        }
+        
+        .hud-button:active {
+            transform: translateY(0);
+        }
+        
+        .hint {
+            position: absolute;
+            bottom: calc(env(safe-area-inset-bottom, 0) + 20px);
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 14px;
+            color: #ffaaaa;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+        
+        .overlay.hidden {
+            display: none;
+        }
+        
+        .card {
+            background: linear-gradient(135deg, #2a0000, #1a0000);
+            border: 3px solid #ff4444;
+            border-radius: 16px;
+            padding: 24px;
+            width: min(92vw, 420px);
+            max-width: 100%;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+        }
+        
+        .card h2 {
+            margin: 0 0 16px 0;
+            color: #ff6666;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        
+        .card input {
+            width: 100%;
+            max-width: 100%;
+            padding: 12px;
+            margin: 16px 0;
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            background: #1a0000;
+            color: #fff;
+            font-size: 16px;
+            text-align: center;
+        }
+        
+        .card input::placeholder {
+            color: #888;
+        }
+        
+        .card-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .card-button {
+            background: linear-gradient(135deg, #8b0000, #4a0000);
+            border: 2px solid #ff4444;
+            border-radius: 8px;
+            padding: 12px 24px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+        
+        .card-button:hover {
+            background: linear-gradient(135deg, #a00000, #600000);
+            transform: translateY(-1px);
+        }
+        
+        .cute-message {
+            position: absolute;
+            top: calc(env(safe-area-inset-top, 0) + 80px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #8b0000, #4a0000);
+            border: 2px solid #ff4444;
+            border-radius: 12px;
+            padding: 8px 16px;
+            font-weight: bold;
+            font-size: 16px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+            pointer-events: none;
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .cute-message.show {
+            opacity: 1;
+        }
+        
+        @media (max-width: 480px) {
+            .hud {
+                padding: 8px 12px;
+            }
+            
+            .hud-item {
+                font-size: 12px;
+                padding: 4px 8px;
+            }
+            
+            .hud-button {
+                min-width: 50px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="stage">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div class="hud">
+            <div class="hud-left">
+                <div class="hud-item" id="scoreDisplay">Score: 0</div>
+                <div class="hud-item" id="bestDisplay">Best: 0</div>
+                <div class="hud-item" id="playerDisplay">Player</div>
+            </div>
+            <div class="hud-right">
+                <div class="hud-button" id="changeNameBtn">Name</div>
+                <div class="hud-button" id="pauseBtn">Pause</div>
+                <div class="hud-button" id="restartBtn">Restart</div>
+            </div>
+        </div>
+        
+        <div class="hint" id="hintText">Tap anywhere to flap...</div>
+        
+        <div class="cute-message" id="cuteMessage"></div>
+        
+        <div class="overlay" id="nameDialog">
+            <div class="card">
+                <h2>🧛‍♂️ Welcome, Vampire!</h2>
+                <input type="text" id="nameInput" placeholder="Your name" maxlength="20">
+                <div class="card-buttons">
+                    <button class="card-button" id="playBtn">Play</button>
+                    <button class="card-button" id="cancelBtn">Cancel</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="overlay hidden" id="startOverlay">
+            <div class="card">
+                <h2>🦇 Vampire Flappy</h2>
+                <p>Tap to start your bloodthirsty flight!</p>
+            </div>
+        </div>
+        
+        <div class="overlay hidden" id="gameOverOverlay">
+            <div class="card">
+                <h2>💀 Game Over</h2>
+                <p id="finalScore">Score: 0</p>
+                <p>Tap to try again...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            'use strict';
+            
+            // Viewport handling for mobile compatibility
+            function setVH() {
+                const vh = window.visualViewport ? 
+                    window.visualViewport.height : 
+                    window.innerHeight;
+                document.documentElement.style.setProperty('--vh', `${vh / 100}px`);
+            }
+            
+            // Canvas and stage references
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const stage = document.getElementById('stage');
+            
+            // Resize canvas to match display size
+            function resizeCanvas() {
+                const rect = canvas.getBoundingClientRect();
+                const dpr = 1; // Keep DPR at 1 for performance
+                
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                
+                // Reset transform before scaling
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.scale(dpr, dpr);
+                ctx.imageSmoothingEnabled = false;
+            }
+            
+            // Initialize viewport and canvas
+            function initViewport() {
+                setVH();
+                setTimeout(resizeCanvas, 50); // Small delay to ensure layout is complete
+            }
+            
+            // Event listeners for viewport changes
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => {
+                    setVH();
+                    setTimeout(resizeCanvas, 50);
+                });
+                window.visualViewport.addEventListener('scroll', () => {
+                    setVH();
+                });
+            }
+            
+            window.addEventListener('resize', () => {
+                setVH();
+                setTimeout(resizeCanvas, 50);
+            });
+            
+            window.addEventListener('orientationchange', () => {
+                setTimeout(() => {
+                    setVH();
+                    setTimeout(resizeCanvas, 100);
+                }, 100);
+            });
+            
+            // Initialize on load
+            initViewport();
+            
+            // Game state and constants
+            const GAME_STATES = {
+                START: 'start',
+                PLAYING: 'playing',
+                PAUSED: 'paused',
+                GAME_OVER: 'game_over',
+                NAME_DIALOG: 'name_dialog'
+            };
+            
+            let gameState = GAME_STATES.NAME_DIALOG;
+            let lastTime = 0;
+            let isTouch = false;
+            
+            // Game constants
+            const GRAVITY = 0.25;
+            const FLAP_STRENGTH = -7.5;
+            const MAX_FALL_SPEED = 8;
+            const BASE_SPEED = 2.0;
+            const PIPE_WIDTH = 52;
+            const BASE_GAP = 140;
+            const MIN_GAP = 120;
+            const PIPE_SPAWN_INTERVAL = 95;
+            
+            // Game variables
+            let bird = { x: 0, y: 0, velocity: 0, radius: 20 };
+            let pipes = [];
+            let score = 0;
+            let speed = BASE_SPEED;
+            let frameCount = 0;
+            let isPaused = false;
+            let currentPlayerName = '';
+            
+            // Storage keys
+            const STORAGE_KEYS = {
+                CURRENT_NAME: 'vamp_flappy_current_name',
+                PLAYERS: 'vamp_flappy_players_v1'
+            };
+            
+            // Player management
+            function loadCurrentPlayer() {
+                currentPlayerName = localStorage.getItem(STORAGE_KEYS.CURRENT_NAME) || '';
+                if (!currentPlayerName) {
+                    gameState = GAME_STATES.NAME_DIALOG;
+                } else {
+                    gameState = GAME_STATES.START;
+                }
+                updateHUD();
+            }
+            
+            function saveCurrentPlayer(name) {
+                currentPlayerName = name.trim() || 'Anonymous';
+                localStorage.setItem(STORAGE_KEYS.CURRENT_NAME, currentPlayerName);
+            }
+            
+            function getPlayers() {
+                try {
+                    return JSON.parse(localStorage.getItem(STORAGE_KEYS.PLAYERS)) || {};
+                } catch {
+                    return {};
+                }
+            }
+            
+            function savePlayerScore(name, score) {
+                const players = getPlayers();
+                if (!players[name] || score > players[name].best) {
+                    players[name] = { best: score };
+                    localStorage.setItem(STORAGE_KEYS.PLAYERS, JSON.stringify(players));
+                }
+            }
+            
+            function getCurrentPlayerBest() {
+                const players = getPlayers();
+                return players[currentPlayerName]?.best || 0;
+            }
+            
+            function updateHUD() {
+                document.getElementById('scoreDisplay').textContent = `Score: ${score}`;
+                document.getElementById('bestDisplay').textContent = `Best: ${getCurrentPlayerBest()}`;
+                document.getElementById('playerDisplay').textContent = currentPlayerName || 'Player';
+            }
+            
+            function updateScoreboard() {
+                updateHUD();
+                document.getElementById('finalScore').textContent = `Score: ${score}`;
+            }
+            
+            // Input handling
+            function isInputOnHUD(event) {
+                const target = event.target;
+                // Only block input on actual HUD elements and name dialog content
+                return target.closest('.hud') || 
+                       target.closest('.card');
+                // Removed: target.closest('.overlay:not(.hidden)') - this was blocking all overlay taps
+            }
+            
+            function handleFlap(event) {
+                if (isInputOnHUD(event)) return;
+                
+                event.preventDefault();
+                
+                switch (gameState) {
+                    case GAME_STATES.START:
+                        startGame();
+                        break;
+                    case GAME_STATES.PLAYING:
+                        if (!isPaused) flap();
+                        break;
+                    case GAME_STATES.GAME_OVER:
+                        resetGame();
+                        break;
+                }
+            }
+            
+            function flap() {
+                bird.velocity = FLAP_STRENGTH;
+            }
+            
+            function startGame() {
+                gameState = GAME_STATES.PLAYING;
+                hideAllOverlays();
+                resetBird();
+                updateHint();
+            }
+            
+            function resetGame() {
+                gameState = GAME_STATES.START;
+                pipes = [];
+                score = 0;
+                speed = BASE_SPEED;
+                frameCount = 0;
+                resetBird();
+                updateHUD();
+                updateHint();
+                showOverlay('startOverlay');
+            }
+            
+            function resetBird() {
+                bird.x = canvas.width * 0.2;
+                bird.y = canvas.height * 0.5;
+                bird.velocity = 0;
+            }
+            
+            function togglePause() {
+                if (gameState === GAME_STATES.PLAYING) {
+                    isPaused = !isPaused;
+                    updateHint();
+                }
+            }
+            
+            // Touch and mouse event listeners
+            function addInputListeners() {
+                // Detect touch capability
+                isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+                
+                // Touch events
+                document.addEventListener('touchstart', handleFlap, { passive: false });
+                
+                // Mouse events for desktop
+                document.addEventListener('click', handleFlap);
+                
+                // Keyboard events for desktop
+                document.addEventListener('keydown', (event) => {
+                    switch (event.code) {
+                        case 'Space':
+                        case 'ArrowUp':
+                            event.preventDefault();
+                            if (gameState === GAME_STATES.PLAYING && !isPaused) {
+                                flap();
+                            } else if (gameState === GAME_STATES.START) {
+                                startGame();
+                            } else if (gameState === GAME_STATES.GAME_OVER) {
+                                resetGame();
+                            }
+                            break;
+                        case 'KeyP':
+                            event.preventDefault();
+                            togglePause();
+                            break;
+                        case 'Enter':
+                            event.preventDefault();
+                            if (gameState === GAME_STATES.GAME_OVER) {
+                                resetGame();
+                            }
+                            break;
+                    }
+                });
+            }
+            
+            // Update hint text based on device and game state
+            function updateHint() {
+                const hintElement = document.getElementById('hintText');
+                
+                if (gameState === GAME_STATES.PLAYING && isPaused) {
+                    hintElement.textContent = 'Game Paused';
+                } else if (gameState === GAME_STATES.START) {
+                    hintElement.textContent = isTouch ? 
+                        'Tap anywhere to flap...' : 
+                        'Click or press Space/ArrowUp... P = pause, Enter = restart';
+                } else if (gameState === GAME_STATES.PLAYING) {
+                    hintElement.textContent = isTouch ? 
+                        'Tap to flap!' : 
+                        'Space/ArrowUp to flap, P = pause';
+                } else if (gameState === GAME_STATES.GAME_OVER) {
+                    hintElement.textContent = isTouch ? 
+                        'Tap to try again...' : 
+                        'Click or press Enter to restart';
+                } else {
+                    hintElement.textContent = '';
+                }
+            }
+            
+            // Game loop
+            function gameLoop(currentTime) {
+                const deltaTime = currentTime - lastTime;
+                lastTime = currentTime;
+                
+                if (gameState === GAME_STATES.PLAYING && !isPaused) {
+                    update(deltaTime);
+                }
+                
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+            
+            function update(deltaTime) {
+                frameCount++;
+                
+                // Update bird physics
+                bird.velocity += GRAVITY;
+                if (bird.velocity > MAX_FALL_SPEED) {
+                    bird.velocity = MAX_FALL_SPEED;
+                }
+                bird.y += bird.velocity;
+                
+                // Check boundaries using canvas dimensions
+                if (bird.y - bird.radius <= 0 || bird.y + bird.radius >= canvas.height) {
+                    gameOver();
+                    return;
+                }
+                
+                // Update pipes and check collisions
+                updatePipes();
+                checkCollisions();
+                
+                // Spawn pipes
+                if (frameCount % PIPE_SPAWN_INTERVAL === 0) {
+                    spawnPipe();
+                }
+            }
+            
+            function spawnPipe() {
+                const gap = Math.max(MIN_GAP, BASE_GAP - Math.floor(score / 5) * 5);
+                const minY = gap / 2 + 50;
+                const maxY = canvas.height - gap / 2 - 50;
+                const gapY = minY + Math.random() * (maxY - minY);
+                
+                pipes.push({
+                    x: canvas.width,
+                    topHeight: gapY - gap / 2,
+                    bottomY: gapY + gap / 2,
+                    bottomHeight: canvas.height - (gapY + gap / 2),
+                    passed: false,
+                    width: PIPE_WIDTH
+                });
+            }
+            
+            function updatePipes() {
+                for (let i = pipes.length - 1; i >= 0; i--) {
+                    const pipe = pipes[i];
+                    pipe.x -= speed;
+                    
+                    // Check if bird passed the pipe
+                    if (!pipe.passed && bird.x > pipe.x + pipe.width) {
+                        pipe.passed = true;
+                        score++;
+                        speed += 0.02; // Gradually increase speed
+                        updateHUD();
+                        
+                        // Show cute message every 3 points
+                        if (score % 3 === 0) {
+                            showCuteMessage();
+                        }
+                    }
+                    
+                    // Remove pipes that are off-screen
+                    if (pipe.x + pipe.width < 0) {
+                        pipes.splice(i, 1);
+                    }
+                }
+            }
+            
+            function checkCollisions() {
+                for (const pipe of pipes) {
+                    if (circleRectCollision(
+                        bird.x, bird.y, bird.radius,
+                        pipe.x, 0, pipe.width, pipe.topHeight
+                    ) || circleRectCollision(
+                        bird.x, bird.y, bird.radius,
+                        pipe.x, pipe.bottomY, pipe.width, pipe.bottomHeight
+                    )) {
+                        gameOver();
+                        return;
+                    }
+                }
+            }
+            
+            function circleRectCollision(cx, cy, radius, rx, ry, rw, rh) {
+                // Find the closest point on the rectangle to the circle
+                const closestX = Math.max(rx, Math.min(cx, rx + rw));
+                const closestY = Math.max(ry, Math.min(cy, ry + rh));
+                
+                // Calculate distance between circle center and closest point
+                const distanceX = cx - closestX;
+                const distanceY = cy - closestY;
+                const distanceSquared = distanceX * distanceX + distanceY * distanceY;
+                
+                return distanceSquared < radius * radius;
+            }
+            
+            function draw() {
+                // Use canvas dimensions, not getBoundingClientRect
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                
+                // Clear using canvas dimensions
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+                
+                // Draw background gradient
+                const gradient = ctx.createRadialGradient(
+                    canvasWidth / 2, canvasHeight / 2, 0,
+                    canvasWidth / 2, canvasHeight / 2, Math.max(canvasWidth, canvasHeight) / 2
+                );
+                gradient.addColorStop(0, '#4a0e0e');
+                gradient.addColorStop(1, '#1a0505');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+                
+                // Draw pipes
+                ctx.fillStyle = '#2d5a2d';
+                ctx.strokeStyle = '#8b0000';
+                ctx.lineWidth = 3;
+                
+                for (const pipe of pipes) {
+                    // Top pipe
+                    ctx.fillRect(pipe.x, 0, pipe.width, pipe.topHeight);
+                    ctx.strokeRect(pipe.x, 0, pipe.width, pipe.topHeight);
+                    
+                    // Bottom pipe
+                    ctx.fillRect(pipe.x, pipe.bottomY, pipe.width, pipe.bottomHeight);
+                    ctx.strokeRect(pipe.x, pipe.bottomY, pipe.width, pipe.bottomHeight);
+                    
+                    // Blood-red rims near gap
+                    ctx.fillStyle = '#8b0000';
+                    ctx.fillRect(pipe.x, pipe.topHeight - 5, pipe.width, 5);
+                    ctx.fillRect(pipe.x, pipe.bottomY, pipe.width, 5);
+                    ctx.fillStyle = '#2d5a2d';
+                }
+                
+                // Draw vampire bird
+                if (gameState !== GAME_STATES.NAME_DIALOG) {
+                    drawVampireBird();
+                }
+            }
+            
+            function drawVampireBird() {
+                const x = bird.x;
+                const y = bird.y;
+                const radius = bird.radius;
+                
+                // Bird body (pale circle)
+                ctx.fillStyle = '#f5f5dc'; // Pale beige
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Red eye
+                const eyeX = x + radius * 0.3;
+                const eyeY = y - radius * 0.2;
+                const eyeRadius = radius * 0.25;
+                
+                ctx.fillStyle = '#8b0000'; // Dark red
+                ctx.beginPath();
+                ctx.arc(eyeX, eyeY, eyeRadius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Eye highlight
+                ctx.fillStyle = '#ff4444';
+                ctx.beginPath();
+                ctx.arc(eyeX - eyeRadius * 0.3, eyeY - eyeRadius * 0.3, eyeRadius * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Small white fangs
+                const fangSize = radius * 0.15;
+                const fang1X = x - fangSize * 0.5;
+                const fang1Y = y + radius * 0.3;
+                const fang2X = x + fangSize * 0.5;
+                const fang2Y = y + radius * 0.3;
+                
+                ctx.fillStyle = '#ffffff';
+                
+                // Left fang
+                ctx.beginPath();
+                ctx.moveTo(fang1X - fangSize, fang1Y);
+                ctx.lineTo(fang1X, fang1Y - fangSize);
+                ctx.lineTo(fang1X + fangSize, fang1Y);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Right fang
+                ctx.beginPath();
+                ctx.moveTo(fang2X - fangSize, fang2Y);
+                ctx.lineTo(fang2X, fang2Y - fangSize);
+                ctx.lineTo(fang2X + fangSize, fang2Y);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Wing effect (simple arc for movement indication)
+                if (bird.velocity < 0) { // Flapping up
+                    ctx.strokeStyle = '#d0d0d0';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(x - radius * 0.8, y, radius * 0.6, -Math.PI * 0.3, Math.PI * 0.3);
+                    ctx.stroke();
+                }
+            }
+            
+            // Overlay management
+            function showOverlay(overlayId) {
+                document.querySelectorAll('.overlay').forEach(overlay => {
+                    overlay.classList.add('hidden');
+                });
+                document.getElementById(overlayId).classList.remove('hidden');
+            }
+            
+            function hideAllOverlays() {
+                document.querySelectorAll('.overlay').forEach(overlay => {
+                    overlay.classList.add('hidden');
+                });
+            }
+            
+            // HUD button handlers
+            function setupHUDButtons() {
+                // Change name button
+                document.getElementById('changeNameBtn').addEventListener('click', () => {
+                    gameState = GAME_STATES.NAME_DIALOG;
+                    showOverlay('nameDialog');
+                    document.getElementById('nameInput').value = currentPlayerName;
+                    document.getElementById('nameInput').focus();
+                });
+                
+                // Pause button
+                document.getElementById('pauseBtn').addEventListener('click', () => {
+                    togglePause();
+                    document.getElementById('pauseBtn').textContent = isPaused ? 'Resume' : 'Pause';
+                });
+                
+                // Restart button
+                document.getElementById('restartBtn').addEventListener('click', () => {
+                    resetGame();
+                    hideAllOverlays();
+                });
+                
+                // Name dialog buttons
+                document.getElementById('playBtn').addEventListener('click', () => {
+                    const name = document.getElementById('nameInput').value.trim();
+                    if (name) {
+                        saveCurrentPlayer(name);
+                        gameState = GAME_STATES.START;
+                        updateHUD();
+                        hideAllOverlays();
+                        showOverlay('startOverlay');
+                    }
+                });
+                
+                document.getElementById('cancelBtn').addEventListener('click', () => {
+                    if (currentPlayerName) {
+                        gameState = GAME_STATES.START;
+                        hideAllOverlays();
+                        showOverlay('startOverlay');
+                    }
+                });
+                
+                // Name input enter key
+                document.getElementById('nameInput').addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        document.getElementById('playBtn').click();
+                    }
+                });
+            }
+            
+            // Cute messages system
+            const CUTE_MESSAGES = [
+                "Fangtastic! 🦇",
+                "You fly like a bat, my love!",
+                "Bloody brilliant! 💀",
+                "Vampiric excellence!",
+                "Darkness becomes you! 🌙",
+                "Your wings are divine!",
+                "Immortal flying skills!",
+                "Blood-curdling good!",
+                "Batty but brilliant!",
+                "Nocturnal perfection! ✨"
+            ];
+            
+            function showCuteMessage() {
+                const messageElement = document.getElementById('cuteMessage');
+                const randomMessage = CUTE_MESSAGES[Math.floor(Math.random() * CUTE_MESSAGES.length)];
+                
+                messageElement.textContent = randomMessage;
+                messageElement.classList.add('show');
+                
+                setTimeout(() => {
+                    messageElement.classList.remove('show');
+                }, 1800);
+            }
+            
+            // Initialize game
+            function initializeGame() {
+                setupHUDButtons();
+                loadCurrentPlayer();
+                
+                if (gameState === GAME_STATES.NAME_DIALOG) {
+                    showOverlay('nameDialog');
+                    document.getElementById('nameInput').focus();
+                } else {
+                    showOverlay('startOverlay');
+                }
+                
+                updateHint();
+            }
+            
+            function gameOver() {
+                gameState = GAME_STATES.GAME_OVER;
+                savePlayerScore(currentPlayerName, score);
+                updateScoreboard();
+                updateHint();
+                showOverlay('gameOverOverlay');
+            }
+            
+            // Initialize input and start game loop
+            addInputListeners();
+            resetBird();
+            initializeGame();
+            requestAnimationFrame(gameLoop);
+            
+            console.log('Vampire Flappy - Game initialized and ready!');
+        })();
+    </script>
+</body>
+</html>
